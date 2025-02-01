@@ -4,6 +4,7 @@ from matplotlib.patches import Arc
 from matplotlib.widgets import Slider
 import matplotlib.collections as mcoll
 import matplotlib.cm as cm
+import random 
 
 plt.ion()
 
@@ -246,7 +247,7 @@ Will run SARSA for a RL agent in a 2D gridworld composed of state_shape, startin
     return Q_table, paths
 
     
-def run_algorithm_gridworld_beta_softmax_different_start_locations(state_shape, action_size, terminal_state, trial_count, max_steps, alpha, gamma, beta, reward_value, algorithm='SARSA', randomInitQTable=1234, choice_random_seed=2314, wrap_around_grid=True):
+def run_algorithm_gridworld_beta_softmax_different_start_locations(state_shape, action_size, terminal_state, trial_count, max_steps, alpha, gamma, beta, reward_value, algorithm='SARSA', planning_steps=10, randomInitQTable=1234, choice_random_seed=2314, wrap_around_grid=True):
     '''
     Example to run: run_algorithm_gridworld_beta_softmax(state_shape=(4, 4), action_size=4, start_state=(0, 0), terminal_state=(3, 3), trial_count=5000, max_steps=100, alpha=0.5, gamma=0.95, beta=0.8, reward_value=1, algorithm='SARSA', randomInitQTable=1234, choice_random_seed=2314, wrap_around_grid=True)
 Will run SARSA for a RL agent in a 2D gridworld composed of state_shape, starting from start_state, with reward at terminal_state, of reward value reward_value, returning paths, list of numpy arrays conveying the path taking by the agent'''
@@ -298,6 +299,10 @@ Will run SARSA for a RL agent in a 2D gridworld composed of state_shape, startin
     lmanhattan_distance = []
     # generate different start locations
     lstart_state = generate_states(state_shape, trial_count)
+    # For Dyna-Q, initialize the model (a dictionary mapping (state, action) to (next_state, reward))
+    if algorithm == 'Dyna-Q':
+        model = {}
+
     for start_state in lstart_state:
     # for trial in range(trial_count):
         state = start_state
@@ -310,8 +315,23 @@ Will run SARSA for a RL agent in a 2D gridworld composed of state_shape, startin
                 Q_table[state][action] = Q_table[state][action] + alpha * (reward + gamma * Q_table[next_state][next_action] - Q_table[state][action])
             elif algorithm == 'Q-learning':
                 Q_table[state][action] = Q_table[state][action] + alpha * (reward + gamma * np.max(Q_table[next_state]) - Q_table[state][action])
+            elif algorithm == 'Dyna-Q':
+                 # Direct RL update (Q-learning style)
+                Q_table[state][action] += alpha * (reward + gamma * np.max(Q_table[next_state]) - Q_table[state][action])
+                
+                # Model learning: record the observed transition in the model
+                model[(state, action)] = (next_state, reward)
+                
+                # Planning: perform a number of simulated updates from the model
+                for _ in range(planning_steps):
+                    # Randomly sample a previously observed state-action pair
+                    s, a = random.choice(list(model.keys()))
+                    s_next, r_model = model[(s, a)]
+                    Q_table[s][a] += alpha * (r_model + gamma * np.max(Q_table[s_next]) - Q_table[s][a])
+                    
+                next_action = choose_action(next_state)
             else:
-                raise ValueError("Invalid algorithm. Choose either 'SARSA' or 'Q-learning'")
+                raise ValueError("Invalid algorithm. Choose either 'SARSA', 'Q-learning', 'Dyna-Q'")
             # print(Q_table[state][action])
             state = next_state
             action = next_action
@@ -366,7 +386,7 @@ def plot_stepCountPaths(arr_path_length, ax):
 
 
 
-def plottingPaths_trials_slider(paths, start_state, terminal_state, state_shape, jitter_scale=0.1):
+def plottingPaths_trials_slider(paths, terminal_state, state_shape, jitter_scale=0.1):
     '''will allow visualizing the different trials wihin paths (list of numpy arrays of paths taken)
 '''
     # jitter_scale = 0.1
